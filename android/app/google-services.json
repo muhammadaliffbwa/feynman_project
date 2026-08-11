@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1071586210222",
+    "project_id": "feynman-84640",
+    "storage_bucket": "feynman-84640.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1071586210222:android:4f507e3c8a1a29223e583f",
+        "android_client_info": {
+          "package_name": "com.example.econdev_prototype"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBeA1rNmUyXDAzND96IbRHw9n-WrpzmOE8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
