@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 
 import '../models/flashcard.dart';
 import '../widgets/color_swatch_picker.dart';
+import '../widgets/mini_audio_player.dart';
+import '../widgets/mini_stopwatch_bar.dart';
+import 'stopwatch_page.dart';
 
 class FlashcardGeneratorPage extends StatefulWidget {
   const FlashcardGeneratorPage({super.key});
@@ -227,6 +230,19 @@ class _FlashcardGeneratorPageState extends State<FlashcardGeneratorPage> {
                 ),
               ],
             ),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          MiniStopwatchBar(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const StopwatchPage()),
+              );
+            },
+          ),
+          const MiniAudioPlayer(),
+        ],
+      ),
     );
   }
 }

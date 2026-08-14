@@ -20,6 +20,9 @@ class FlashcardDeck {
   final List<Flashcard> cards;
   final Color color;
   final DateTime createdAt;
+  final Set<int> reviewedCardIndexes;
+  final Map<int, bool> cardRatings;
+  final List<String> tags;
 
   FlashcardDeck({
     required this.id,
@@ -27,7 +30,13 @@ class FlashcardDeck {
     required this.cards,
     required this.color,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+    Set<int>? reviewedCardIndexes,
+    Map<int, bool>? cardRatings,
+    List<String>? tags,
+  })  : createdAt = createdAt ?? DateTime.now(),
+        reviewedCardIndexes = reviewedCardIndexes ?? {},
+        cardRatings = cardRatings ?? {},
+        tags = tags ?? [];
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -35,6 +44,9 @@ class FlashcardDeck {
         'cards': cards.map((c) => c.toJson()).toList(),
         'color': color.toARGB32(),
         'createdAt': createdAt.toIso8601String(),
+        'reviewedCardIndexes': reviewedCardIndexes.toList(),
+        'cardRatings': cardRatings.map((k, v) => MapEntry(k.toString(), v)),
+        'tags': tags,
       };
 
   factory FlashcardDeck.fromJson(Map<String, dynamic> json) => FlashcardDeck(
@@ -45,5 +57,35 @@ class FlashcardDeck {
             .toList(),
         color: Color(json['color'] as int),
         createdAt: DateTime.parse(json['createdAt'] as String),
+        reviewedCardIndexes: (json['reviewedCardIndexes'] as List?)
+                ?.map((e) => e as int)
+                .toSet() ??
+            {},
+        cardRatings: (json['cardRatings'] as Map<String, dynamic>?)?.map(
+              (k, v) => MapEntry(int.parse(k), v as bool),
+            ) ??
+            {},
+        tags: (json['tags'] as List?)?.map((e) => e as String).toList() ?? [],
       );
+  FlashcardDeck copyWith({
+    String? id,
+    String? title,
+    List<Flashcard>? cards,
+    Color? color,
+    DateTime? createdAt,
+    Set<int>? reviewedCardIndexes,
+    Map<int, bool>? cardRatings,
+    List<String>? tags,
+  }) {
+    return FlashcardDeck(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      cards: cards ?? this.cards,
+      color: color ?? this.color,
+      createdAt: createdAt ?? this.createdAt,
+      reviewedCardIndexes: reviewedCardIndexes ?? this.reviewedCardIndexes,
+      cardRatings: cardRatings ?? this.cardRatings,
+      tags: tags ?? this.tags, // Preserves tags if not updated
+    );
+  }
 }

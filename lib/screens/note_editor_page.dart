@@ -6,6 +6,9 @@ import '../models/note.dart';
 import '../widgets/color_swatch_picker.dart';
 import '../widgets/draw_toolbar.dart';
 import '../widgets/drawing_canvas.dart';
+import '../widgets/mini_audio_player.dart';
+import '../widgets/mini_stopwatch_bar.dart';
+import 'stopwatch_page.dart';
 
 enum _EditorMode { text, draw }
 
@@ -198,55 +201,97 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
         ),
       ),
       body: _mode == _EditorMode.text ? _buildTextMode() : _buildDrawMode(),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          MiniStopwatchBar(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const StopwatchPage()),
+              );
+            },
+          ),
+          const MiniAudioPlayer(),
+        ],
+      ),
     );
   }
 
   Widget _buildTextMode() {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: _insertTextBox,
-                    icon: const Icon(Icons.add_box_outlined, size: 18),
-                    label: const Text('New text box'),
+    return Container(
+      color: Colors.grey.shade100, // Light neutral background for outer area
+      child: Column(
+        children: [
+          Container(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            child: Column(
+              children: [
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton.icon(
+                            onPressed: _insertTextBox,
+                            icon: const Icon(Icons.add_box_outlined, size: 18),
+                            label: const Text('New text box'),
+                          ),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: _pickBackgroundColor,
+                        icon: const Icon(Icons.format_color_fill, size: 18),
+                        label: const Text('Text Background'),
+                      ),
+                    ],
+                  ),
+                ),
+                quill.QuillSimpleToolbar(
+                  controller: _quillController,
+                  config: quill.QuillSimpleToolbarConfig(
+                    showBackgroundColorButton: false,
+                    buttonOptions: quill.QuillSimpleToolbarButtonOptions(
+                      fontFamily: quill.QuillToolbarFontFamilyButtonOptions(
+                        items: _fontFamilies,
+                      ),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1, thickness: 1),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(16),
+                child: quill.QuillEditor.basic(
+                  controller: _quillController,
+                  config: const quill.QuillEditorConfig(
+                    placeholder: 'Start writing your note here...',
                   ),
                 ),
               ),
-              TextButton.icon(
-                onPressed: _pickBackgroundColor,
-                icon: const Icon(Icons.format_color_fill, size: 18),
-                label: const Text('Text Background'),
-              ),
-            ],
-          ),
-        ),
-        quill.QuillSimpleToolbar(
-          controller: _quillController,
-          config: quill.QuillSimpleToolbarConfig(
-            showBackgroundColorButton: false,
-            buttonOptions: quill.QuillSimpleToolbarButtonOptions(
-              fontFamily: quill.QuillToolbarFontFamilyButtonOptions(
-                items: _fontFamilies,
-              ),
             ),
           ),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: quill.QuillEditor.basic(
-              controller: _quillController,
-              config: const quill.QuillEditorConfig(),
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

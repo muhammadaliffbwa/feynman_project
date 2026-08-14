@@ -1,178 +1,190 @@
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:vibration/vibration.dart';
+// lib/screens/pomodoro_page.dart
 
+import 'package:flutter/material.dart';
+
+import '../services/noise_player.dart';
+import '../services/pomodoro_service.dart';
 import '../widgets/color_swatch_picker.dart';
 import '../widgets/dial_timer.dart';
+import '../widgets/mini_audio_player.dart';
+import '../widgets/mini_stopwatch_bar.dart';
+import 'stopwatch_page.dart';
 
-class PomodoroPage extends StatefulWidget {
+class PomodoroPage extends StatelessWidget {
   const PomodoroPage({super.key});
 
   @override
-  State<PomodoroPage> createState() => _PomodoroPageState();
-}
+  Widget build(BuildContext context) {
+    final service = PomodoroService();
 
-class _PomodoroPageState extends State<PomodoroPage> {
-  static const int _maxMinutes = 60; // one full lap of the dial
+    return ListenableBuilder(
+      listenable: service,
+      builder: (context, _) {
+        return Scaffold(
+          appBar: AppBar(title: const Text('Pomodoro Timer')),
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              child: Column(
+                children: [
+                  // Dial Timer View
+                  Expanded(
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: 1,
+                        child: DialTimer(
+                          progress: service.progress,
+                          color: service.dialColor,
+                          label: service.centerLabel,
+                          sublabel: service.sublabel,
+                          onChanged: service.isRunning
+                              ? null
+                              : (p) => service.setDialMinutes(
+                                    (p * PomodoroService.maxMinutes).round(),
+                                  ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
 
-  int _selectedMinutes = 25; // chosen while the dial is being set
-  int _remainingSeconds = 0; // ticks down once running
-  bool _isRunning = false;
-  Color _dialColor = ColorSwatchPicker.options.first;
-  Timer? _timer;
+                  // Pomodoro Preset Dropdown Menu
+                  if (!service.isRunning) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<PomodoroPreset>(
+                          value: service.selectedPreset,
+                          isExpanded: true,
+                          icon: const Icon(Icons.arrow_drop_down),
+                          items: PomodoroService.presets.map((preset) {
+                            return DropdownMenuItem<PomodoroPreset>(
+                              value: preset,
+                              child: Text(
+                                preset.label,
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                            );
+                          }).toList(),
+                          onChanged: (preset) {
+                            if (preset != null) service.setPreset(preset);
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
+                  // Background Noise Selector Chips
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Background Noise',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.color
+                              ?.withValues(alpha: 0.7),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          _buildNoiseChip(service, NoiseType.off, 'Off',
+                              Icons.volume_off_rounded),
+                          _buildNoiseChip(service, NoiseType.white, 'White',
+                              Icons.graphic_eq_rounded),
+                          _buildNoiseChip(service, NoiseType.pink, 'Pink',
+                              Icons.waves_rounded),
+                          _buildNoiseChip(service, NoiseType.brown, 'Brown',
+                              Icons.air_rounded),
+                        ],
+                      ),
+                    ],
+                  ),
 
-  // While setting: how far around the dial the chosen minutes sit.
-  // While running: how much time is left, as a fraction of the total —
-  // this makes the arc visually "unwind" as the countdown proceeds.
-  double get _progress {
-    if (_isRunning) {
-      final totalSeconds = _selectedMinutes * 60;
-      return totalSeconds == 0 ? 0 : _remainingSeconds / totalSeconds;
-    }
-    return _selectedMinutes / _maxMinutes;
-  }
+                  const SizedBox(height: 16),
 
-  String get _centerLabel {
-    if (_isRunning) {
-      final minutes = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
-      final seconds = (_remainingSeconds % 60).toString().padLeft(2, '0');
-      return '$minutes:$seconds';
-    }
-    return '$_selectedMinutes';
-  }
+                  if (!service.isRunning) ...[
+                    ColorSwatchPicker(
+                      selectedColor: service.dialColor,
+                      onColorSelected: service.setDialColor,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
-  void _onDialChanged(double progress) {
-    int minutes = (progress * _maxMinutes).round();
-    if (minutes < 1) minutes = 1; // never let it drop to a 0-minute timer
-    if (minutes > _maxMinutes) minutes = _maxMinutes;
-    setState(() => _selectedMinutes = minutes);
-  }
-
-  void _startTimer() {
-    setState(() {
-      _isRunning = true;
-      _remainingSeconds = _selectedMinutes * 60;
-    });
-    _timer = Timer.periodic(const Duration(seconds: 1), _tick);
-  }
-
-  void _tick(Timer timer) {
-    setState(() => _remainingSeconds--);
-    if (_remainingSeconds <= 0) {
-      timer.cancel();
-      _onTimerComplete();
-    }
-  }
-
-  void _stopTimer() {
-    _timer?.cancel();
-    setState(() {
-      _isRunning = false;
-      _remainingSeconds = 0;
-    });
-  }
-
-  Future<void> _onTimerComplete() async {
-    // Buzz the phone. Wrapped in try/catch since some devices/emulators
-    // have no vibration motor and would otherwise throw.
-    try {
-      final hasVibrator = await Vibration.hasVibrator();
-      if (hasVibrator) {
-        Vibration.vibrate(pattern: [0, 500, 200, 500]);
-      } else {
-        HapticFeedback.heavyImpact(); // fallback: a short haptic tick
-      }
-    } catch (_) {
-      // No vibration available — not worth interrupting the flow for.
-    }
-
-    if (!mounted) return;
-    setState(() => _isRunning = false);
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text("Time's up!", textAlign: TextAlign.center),
-        content: const Text(
-          'Your study session has ended. What would you like to do?',
-          textAlign: TextAlign.center,
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          OutlinedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              setState(() => _selectedMinutes = 25); // back to default
-            },
-            child: const Text('End Study Session'),
+                  // Start/Stop Action Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: service.dialColor,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      onPressed: service.isRunning
+                          ? service.stopTimer
+                          : service.startTimer,
+                      child: Text(service.isRunning
+                          ? 'Stop'
+                          : (service.isWorkSession
+                              ? 'Start Studying'
+                              : 'Start Rest')),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-          FilledButton(
-            // Just closes the dialog — the dial is already back in
-            // "set" mode underneath, ready to drag to a new duration.
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Continue Flow State'),
+          bottomNavigationBar: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              MiniStopwatchBar(
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const StopwatchPage()),
+                  );
+                },
+              ),
+              const MiniAudioPlayer(),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Pomodoro Timer')),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              Expanded(
-                child: Center(
-                  child: AspectRatio(
-                    aspectRatio: 1,
-                    child: DialTimer(
-                      progress: _progress,
-                      color: _dialColor,
-                      label: _centerLabel,
-                      sublabel:
-                          _isRunning ? 'remaining' : 'minutes — drag to set',
-                      onChanged: _isRunning ? null : _onDialChanged,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              if (!_isRunning) ...[
-                ColorSwatchPicker(
-                  selectedColor: _dialColor,
-                  onColorSelected: (color) =>
-                      setState(() => _dialColor = color),
-                ),
-                const SizedBox(height: 24),
-              ],
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _dialColor,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  onPressed: _isRunning ? _stopTimer : _startTimer,
-                  child: Text(_isRunning ? 'Stop' : 'Start Studying'),
-                ),
-              ),
-            ],
-          ),
-        ),
+  Widget _buildNoiseChip(
+    PomodoroService service,
+    NoiseType type,
+    String label,
+    IconData icon,
+  ) {
+    final isSelected = service.selectedNoise == type;
+    return ChoiceChip(
+      avatar: Icon(
+        icon,
+        size: 16,
+        color: isSelected ? Colors.white : service.dialColor,
       ),
+      label: Text(label),
+      selected: isSelected,
+      selectedColor: service.dialColor,
+      labelStyle: TextStyle(
+        color: isSelected ? Colors.white : null,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+      ),
+      onSelected: (_) => service.setSelectedNoise(type),
     );
   }
 }

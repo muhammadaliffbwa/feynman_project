@@ -8,13 +8,20 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 
 import 'firebase_options.dart';
 import 'screens/home_page.dart';
+import 'services/pomodoro_service.dart';
 
 // Public by design — reCAPTCHA site keys are meant to ship in client code,
 // unlike the Gemini key, which never appears here at all.
 const _recaptchaSiteKey = '6LeHs34tAAAAAM0eJHd8UH_pzeehd58rHI7NFDzs';
 
+// Global key required for PomodoroService to trigger completion overlays from anywhere
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Attach global navigator key to PomodoroService
+  PomodoroService().navigatorKey = navigatorKey;
 
   try {
     await Firebase.initializeApp(
@@ -32,7 +39,7 @@ void main() async {
             : AndroidProvider.playIntegrity,
       );
     }
-  }catch (e) {
+  } catch (e) {
     debugPrint('Firebase setup failed: $e');
   }
 
@@ -66,6 +73,7 @@ class _MyAppState extends State<MyApp> {
     const seedColor = Color.fromARGB(255, 10, 108, 62);
 
     return MaterialApp(
+      navigatorKey: navigatorKey, // <--- Assigned global navigatorKey here
       title: 'Feynman',
       themeMode: _themeMode,
       theme: ThemeData(

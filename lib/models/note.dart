@@ -50,6 +50,7 @@ class Note {
   List<dynamic> textDelta;
   List<DrawStroke> strokes;
   DateTime updatedAt;
+  int? colorValue;
 
   Note({
     required this.id,
@@ -57,6 +58,7 @@ class Note {
     List<dynamic>? textDelta,
     List<DrawStroke>? strokes,
     DateTime? updatedAt,
+    this.colorValue,
   })  : textDelta = textDelta ?? [],
         strokes = strokes ?? [],
         updatedAt = updatedAt ?? DateTime.now();
@@ -67,6 +69,7 @@ class Note {
         'textDelta': textDelta,
         'strokes': strokes.map((s) => s.toJson()).toList(),
         'updatedAt': updatedAt.toIso8601String(),
+        'colorValue': colorValue,
       };
 
   factory Note.fromJson(Map<String, dynamic> json) => Note(
@@ -77,5 +80,24 @@ class Note {
             .map((s) => DrawStroke.fromJson(s as Map<String, dynamic>))
             .toList(),
         updatedAt: DateTime.parse(json['updatedAt'] as String),
+        colorValue: json['colorValue'] as int?,
       );
+
+  Note copyWith({
+    String? id,
+    String? title,
+    List<dynamic>? textDelta,
+    List<DrawStroke>? strokes,
+    DateTime? updatedAt,
+    int? colorValue,
+  }) {
+    return Note(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      textDelta: textDelta ?? this.textDelta,
+      strokes: strokes ?? this.strokes,
+      updatedAt: updatedAt ?? this.updatedAt,
+      colorValue: colorValue ?? this.colorValue,
+    );
+  }
 }

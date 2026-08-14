@@ -1,10 +1,11 @@
-import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../controllers/stopwatch_controller.dart';
 import '../models/study_session.dart';
 import '../widgets/color_swatch_picker.dart';
+import '../widgets/mini_audio_player.dart';
 
 class StopwatchPage extends StatefulWidget {
   const StopwatchPage({super.key});
@@ -13,37 +14,30 @@ class StopwatchPage extends StatefulWidget {
   State<StopwatchPage> createState() => _StopwatchPageState();
 }
 
-class _StopwatchPageState extends State<StopwatchPage>
-    with SingleTickerProviderStateMixin {
-  // Drives the visual bar only — it loops every 60s regardless of how
-  // long the session actually runs, so there's always motion to look at.
-  late final AnimationController _progressController;
-
-  // Tracks the real elapsed time. Dart's Stopwatch class is built for
-  // exactly this — accurate start/stop/elapsed, independent of how
-  // often the UI happens to redraw.
-  final Stopwatch _stopwatch = Stopwatch();
-  Timer? _uiTimer; // just triggers periodic repaints of the time text
-
+class _StopwatchPageState extends State<StopwatchPage> {
   final TextEditingController _subjectController = TextEditingController();
-  bool _isRunning = false;
-  Color _barColor = ColorSwatchPicker.options.first;
+  final StopwatchController _controller = StopwatchController.instance;
   List<StudySession> _history = [];
 
   @override
   void initState() {
     super.initState();
-    _progressController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 60),
-    );
+
+    if (_controller.isRunning) {
+      _subjectController.text = _controller.currentSubject;
+    }
+
+    _controller.addListener(_onControllerUpdate);
     _loadHistory();
+  }
+
+  void _onControllerUpdate() {
+    setState(() {});
   }
 
   @override
   void dispose() {
-    _progressController.dispose();
-    _uiTimer?.cancel();
+    _controller.removeListener(_onControllerUpdate);
     _subjectController.dispose();
     super.dispose();
   }
@@ -65,8 +59,6 @@ class _StopwatchPageState extends State<StopwatchPage>
     await prefs.setString('study_sessions', data);
   }
 
-  // Unique subjects from past sessions, most recent first — powers the
-  // quick-select chips.
   List<String> get _recentSubjects {
     final seen = <String>{};
     final result = <String>[];
@@ -79,44 +71,26 @@ class _StopwatchPageState extends State<StopwatchPage>
     return result;
   }
 
-  void _start() {
-    if (_subjectController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add a subject or topic first')),
-      );
-      return;
+  void _handleToggle() {
+    if (_controller.isRunning) {
+      final session = _controller.stop();
+      if (session != null) {
+        setState(() {
+          _history.insert(0, session);
+        });
+        _saveHistory();
+        _subjectController.clear();
+        _showSummary(session);
+      }
+    } else {
+      if (_subjectController.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Add a subject or topic first')),
+        );
+        return;
+      }
+      _controller.start(_subjectController.text);
     }
-    setState(() => _isRunning = true);
-    _stopwatch.start();
-    _progressController.repeat();
-    _uiTimer = Timer.periodic(
-      const Duration(milliseconds: 200),
-      (_) => setState(() {}),
-    );
-  }
-
-  void _stop() {
-    _stopwatch.stop();
-    _progressController.stop();
-    _uiTimer?.cancel();
-
-    final session = StudySession(
-      subject: _subjectController.text.trim(),
-      duration: _stopwatch.elapsed,
-      endedAt: DateTime.now(),
-    );
-
-    setState(() {
-      _isRunning = false;
-      _history.insert(0, session);
-    });
-    _saveHistory();
-
-    _stopwatch.reset();
-    _progressController.reset();
-    _subjectController.clear();
-
-    _showSummary(session);
   }
 
   void _showSummary(StudySession session) {
@@ -133,7 +107,7 @@ class _StopwatchPageState extends State<StopwatchPage>
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
             ),
             const SizedBox(height: 8),
-            Text('Studied for ${_formatDuration(session.duration)}'),
+            Text('Studied for ${_controller.formatDuration(session.duration)}'),
           ],
         ),
         actions: [
@@ -146,20 +120,17 @@ class _StopwatchPageState extends State<StopwatchPage>
     );
   }
 
-  String _formatDuration(Duration d) {
-    final hours = d.inHours;
-    final minutes = d.inMinutes.remainder(60);
-    final seconds = d.inSeconds.remainder(60);
-    if (hours > 0) {
-      return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
-    }
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-
   String _formatDate(DateTime dt) => '${dt.day}/${dt.month}/${dt.year}';
 
   @override
   Widget build(BuildContext context) {
+    final isRunning = _controller.isRunning;
+    final barColor = _controller.barColor;
+
+    // Calculate progress directly from elapsed millisecond state
+    final elapsedMs = _controller.stopwatch.elapsed.inMilliseconds;
+    final double progressValue = isRunning ? (elapsedMs % 60000) / 60000.0 : 0.0;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Study Stopwatch')),
       body: SafeArea(
@@ -168,7 +139,7 @@ class _StopwatchPageState extends State<StopwatchPage>
           children: [
             TextField(
               controller: _subjectController,
-              enabled: !_isRunning,
+              enabled: !isRunning,
               decoration: const InputDecoration(
                 labelText: 'Subject / topic',
                 border: OutlineInputBorder(),
@@ -182,45 +153,40 @@ class _StopwatchPageState extends State<StopwatchPage>
                 children: _recentSubjects
                     .map((s) => ActionChip(
                           label: Text(s),
-                          onPressed: _isRunning
+                          onPressed: isRunning
                               ? null
-                              : () => setState(() => _subjectController.text = s),
+                              : () => setState(
+                                  () => _subjectController.text = s),
                         ))
                     .toList(),
               ),
             ],
             const SizedBox(height: 32),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: AnimatedBuilder(
-                animation: _progressController,
-                builder: (context, _) => LinearProgressIndicator(
-                  value: _progressController.value,
-                  minHeight: 28,
-                  backgroundColor: Colors.grey.shade300,
-                  valueColor: AlwaysStoppedAnimation(_barColor),
-                ),
-              ),
+            // Striped Animated Progress Bar
+            AnimatedStripedProgressBar(
+              value: progressValue,
+              baseColor: barColor,
+              backgroundColor:
+                  Theme.of(context).colorScheme.surfaceContainerHighest,
+              totalElapsedMs: elapsedMs,
+              isRunning: isRunning,
             ),
             const SizedBox(height: 16),
             Center(
-              child: AnimatedBuilder(
-                animation: _progressController,
-                builder: (context, _) => Text(
-                  _formatDuration(_stopwatch.elapsed),
-                  style: TextStyle(
-                    fontSize: 40,
-                    fontWeight: FontWeight.bold,
-                    color: _barColor,
-                  ),
+              child: Text(
+                _controller.formatDuration(_controller.stopwatch.elapsed),
+                style: TextStyle(
+                  fontSize: 40,
+                  fontWeight: FontWeight.bold,
+                  color: barColor,
                 ),
               ),
             ),
             const SizedBox(height: 20),
-            if (!_isRunning) ...[
+            if (!isRunning) ...[
               ColorSwatchPicker(
-                selectedColor: _barColor,
-                onColorSelected: (color) => setState(() => _barColor = color),
+                selectedColor: barColor,
+                onColorSelected: (color) => _controller.setBarColor(color),
               ),
               const SizedBox(height: 20),
             ],
@@ -228,11 +194,11 @@ class _StopwatchPageState extends State<StopwatchPage>
               width: double.infinity,
               child: FilledButton(
                 style: FilledButton.styleFrom(
-                  backgroundColor: _barColor,
+                  backgroundColor: barColor,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
-                onPressed: _isRunning ? _stop : _start,
-                child: Text(_isRunning ? 'Stop' : 'Start Studying'),
+                onPressed: _handleToggle,
+                child: Text(isRunning ? 'Stop' : 'Start Studying'),
               ),
             ),
             if (_history.isNotEmpty) ...[
@@ -249,7 +215,7 @@ class _StopwatchPageState extends State<StopwatchPage>
                       title: Text(s.subject),
                       subtitle: Text(_formatDate(s.endedAt)),
                       trailing: Text(
-                        _formatDuration(s.duration),
+                        _controller.formatDuration(s.duration),
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                     ),
@@ -258,6 +224,103 @@ class _StopwatchPageState extends State<StopwatchPage>
           ],
         ),
       ),
+      bottomNavigationBar: const MiniAudioPlayer(),
     );
+  }
+}
+
+class AnimatedStripedProgressBar extends StatelessWidget {
+  final double value;
+  final Color baseColor;
+  final Color backgroundColor;
+  final int totalElapsedMs;
+  final bool isRunning;
+
+  const AnimatedStripedProgressBar({
+    super.key,
+    required this.value,
+    required this.baseColor,
+    required this.backgroundColor,
+    required this.totalElapsedMs,
+    required this.isRunning,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 28,
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: CustomPaint(
+          painter: _StripedProgressBarPainter(
+            value: value.clamp(0.0, 1.0),
+            baseColor: baseColor,
+            stripeOffset: isRunning ? (totalElapsedMs / 30.0) % 30.0 : 0.0,
+          ),
+          child: const SizedBox.expand(),
+        ),
+      ),
+    );
+  }
+}
+
+class _StripedProgressBarPainter extends CustomPainter {
+  final double value;
+  final Color baseColor;
+  final double stripeOffset;
+
+  _StripedProgressBarPainter({
+    required this.value,
+    required this.baseColor,
+    required this.stripeOffset,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (value <= 0) return;
+
+    final double fillWidth = size.width * value;
+    final Rect fillRect = Rect.fromLTWH(0, 0, fillWidth, size.height);
+
+    canvas.save();
+    canvas.clipRect(fillRect);
+
+    final Paint basePaint = Paint()..color = baseColor;
+    canvas.drawRect(fillRect, basePaint);
+
+    final Paint stripePaint = Paint()
+      ..color = Colors.white.withOpacity(0.22)
+      ..style = PaintingStyle.fill;
+
+    const double stripeWidth = 15.0;
+    const double stripeSpacing = 30.0;
+
+    final Path path = Path();
+    final double startX = -size.height - stripeSpacing + stripeOffset;
+    final double endX = fillWidth + size.height + stripeSpacing;
+
+    for (double x = startX; x < endX; x += stripeSpacing) {
+      path.reset();
+      path.moveTo(x, size.height);
+      path.lineTo(x + stripeWidth, size.height);
+      path.lineTo(x + stripeWidth + size.height, 0);
+      path.lineTo(x + size.height, 0);
+      path.close();
+
+      canvas.drawPath(path, stripePaint);
+    }
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _StripedProgressBarPainter oldDelegate) {
+    return oldDelegate.value != value ||
+        oldDelegate.stripeOffset != stripeOffset ||
+        oldDelegate.baseColor != baseColor;
   }
 }

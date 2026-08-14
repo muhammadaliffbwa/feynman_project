@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'flashcards_page.dart';
+import 'focus_audio_page.dart'; // 6th Feature Page
 import 'notes_page.dart';
 import 'pomodoro_page.dart';
 import 'stopwatch_page.dart';
 import 'todo_page.dart';
+import '../widgets/mini_audio_player.dart';
+import '../widgets/mini_stopwatch_bar.dart'; // Import mini stopwatch widget
 
 class HomePage extends StatelessWidget {
   final bool isDarkMode;
@@ -54,84 +57,183 @@ class HomePage extends StatelessWidget {
         color: const Color(0xFF8E24AA),
         builder: (_) => const StopwatchPage(),
       ),
+      _Feature(
+        title: 'Focus Audio',
+        subtitle: 'Auditory masking & Lo-Fi',
+        icon: Icons.headphones_rounded,
+        color: const Color(0xFF6C5CE7),
+        builder: (_) => const FocusAudioPage(),
+      ),
     ];
 
-    // Theme.of(context).textTheme's default color already flips between
-    // near-black and near-white with the theme — reading it here (instead
-    // of hardcoding a grey) is what makes this subtitle legible in both.
-    final subtitleColor =
-        Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.6);
+    final subtitleColor = Theme.of(context)
+        .textTheme
+        .bodyMedium
+        ?.color
+        ?.withValues(alpha: 0.65);
 
     return Scaffold(
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Hello, Student 👋',
-                            style: TextStyle(
-                                fontSize: 28, fontWeight: FontWeight.bold),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final double availableWidth = constraints.maxWidth;
+            final double availableHeight = constraints.maxHeight;
+
+            // Layout breakpoints
+            final bool isDesktop = availableWidth >= 900;
+            final int crossAxisCount = isDesktop ? 3 : 2;
+            final int rowCount = isDesktop ? 2 : 3;
+
+            // Spacing parameters
+            const double horizontalPadding = 20.0;
+            const double verticalPadding = 16.0;
+            const double spacing = 12.0;
+            const double headerEstimatedHeight = 72.0;
+
+            // Calculate precise card dimensions to guarantee zero-scroll fit
+            final double gridWidth = availableWidth - (horizontalPadding * 2);
+            final double gridHeight = availableHeight -
+                headerEstimatedHeight -
+                (verticalPadding * 2);
+
+            final double colWidth =
+                (gridWidth - ((crossAxisCount - 1) * spacing)) / crossAxisCount;
+            final double rowHeight =
+                (gridHeight - ((rowCount - 1) * spacing)) / rowCount;
+
+            // Protect against potential division by zero or negative space
+            final double calculatedAspectRatio = (colWidth > 0 && rowHeight > 0)
+                ? (colWidth / rowHeight)
+                : 1.2;
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: verticalPadding,
+              ),
+              child: Column(
+                children: [
+                  // Header Row
+                  SizedBox(
+                    height: headerEstimatedHeight,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'Hi, Student 👋',
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'What would you like to focus on today?',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: subtitleColor,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'What would you like to do today?',
-                            style:
-                                TextStyle(fontSize: 16, color: subtitleColor),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: onToggleTheme,
-                      tooltip: isDarkMode
-                          ? 'Switch to light mode'
-                          : 'Switch to dark mode',
-                      icon: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 250),
-                        transitionBuilder: (child, anim) =>
-                            RotationTransition(turns: anim, child: child),
-                        child: Icon(
-                          isDarkMode
-                              ? Icons.dark_mode_rounded
-                              : Icons.light_mode_rounded,
-                          key: ValueKey(isDarkMode),
-                          color: isDarkMode
-                              ? Colors.indigo.shade200
-                              : Colors.amber.shade700,
                         ),
+                        const SizedBox(width: 12),
+                        // Sun Toggle in White Background Pill
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: Colors.black.withValues(alpha: 0.08),
+                              width: 1,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.06),
+                                blurRadius: 10,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: IconButton(
+                            onPressed: onToggleTheme,
+                            tooltip: isDarkMode
+                                ? 'Switch to light mode'
+                                : 'Switch to dark mode',
+                            constraints: const BoxConstraints(
+                              minWidth: 40,
+                              minHeight: 40,
+                            ),
+                            padding: EdgeInsets.zero,
+                            icon: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 250),
+                              transitionBuilder: (child, anim) =>
+                                  RotationTransition(turns: anim, child: child),
+                              child: Icon(
+                                isDarkMode
+                                    ? Icons.dark_mode_rounded
+                                    : Icons.light_mode_rounded,
+                                key: ValueKey(isDarkMode),
+                                color: isDarkMode
+                                    ? Colors.indigo.shade200
+                                    : Colors.amber.shade700,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Fixed Grid fitting entire viewport
+                  Expanded(
+                    child: GridView.builder(
+                      physics: const NeverScrollableScrollPhysics(), // Ensures single-page lock
+                      itemCount: features.length,
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        mainAxisSpacing: spacing,
+                        crossAxisSpacing: spacing,
+                        childAspectRatio: calculatedAspectRatio,
+                      ),
+                      itemBuilder: (context, i) => _FeatureCard(
+                        feature: features[i],
+                        isCompact: !isDesktop,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.all(16),
-              sliver: SliverGrid(
-                gridDelegate:
-                    const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 14,
-                  crossAxisSpacing: 14,
-                  childAspectRatio: 1,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) => _FeatureCard(feature: features[i]),
-                  childCount: features.length,
-                ),
-              ),
-            ),
-          ],
+            );
+          },
         ),
+      ),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          MiniStopwatchBar(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const StopwatchPage()),
+              );
+            },
+          ),
+          const MiniAudioPlayer(),
+        ],
       ),
     );
   }
@@ -143,6 +245,7 @@ class _Feature {
   final IconData icon;
   final Color color;
   final WidgetBuilder builder;
+
   _Feature({
     required this.title,
     required this.subtitle,
@@ -154,47 +257,81 @@ class _Feature {
 
 class _FeatureCard extends StatelessWidget {
   final _Feature feature;
-  const _FeatureCard({required this.feature});
+  final bool isCompact;
+
+  const _FeatureCard({
+    required this.feature,
+    required this.isCompact,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    // A 0.08 tint reads fine on white but nearly disappears on black —
-    // bump it up in dark mode so the cards stay visible.
     final cardTint = feature.color.withValues(alpha: isDark ? 0.22 : 0.08);
-    final subtitleColor =
-        Theme.of(context).textTheme.bodySmall?.color?.withValues(alpha: 0.6);
+    final subtitleColor = Theme.of(context)
+        .textTheme
+        .bodySmall
+        ?.color
+        ?.withValues(alpha: 0.65);
 
     return Material(
       color: cardTint,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(18),
       child: InkWell(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(18),
         onTap: () => Navigator.of(context)
             .push(MaterialPageRoute(builder: feature.builder)),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: EdgeInsets.all(isCompact ? 12 : 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // Icon Badge
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: EdgeInsets.all(isCompact ? 8 : 10),
                 decoration: BoxDecoration(
                   color: feature.color,
                   borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: feature.color.withValues(alpha: 0.25),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-                child: Icon(feature.icon, color: Colors.white, size: 26),
+                child: Icon(
+                  feature.icon,
+                  color: Colors.white,
+                  size: isCompact ? 20 : 24,
+                ),
               ),
+
+              // Title & Subtitle Section
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(feature.title,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 4),
-                  Text(feature.subtitle,
-                      style: TextStyle(fontSize: 12, color: subtitleColor)),
+                  Text(
+                    feature.title,
+                    style: TextStyle(
+                      fontSize: isCompact ? 14 : 16,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: isCompact ? 2 : 4),
+                  Text(
+                    feature.subtitle,
+                    style: TextStyle(
+                      fontSize: isCompact ? 11 : 12,
+                      color: subtitleColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
               ),
             ],
