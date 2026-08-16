@@ -67,6 +67,24 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
     _saveDecks();
   }
 
+  Future<void> _editDeck(FlashcardDeck deck) async {
+  final updatedDeck = await Navigator.of(context).push<FlashcardDeck>(
+    MaterialPageRoute(
+      builder: (_) => FlashcardEditorPage(initialDeck: deck),
+    ),
+  );
+
+  if (updatedDeck == null) return;
+
+  setState(() {
+    final index = _decks.indexWhere((d) => d.id == updatedDeck.id);
+    if (index != -1) {
+      _decks[index] = updatedDeck;
+    }
+  });
+  _saveDecks();
+}
+
   void _openDeck(FlashcardDeck deck) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -190,22 +208,22 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
                               constraints.maxWidth > 700 ? 3 : 2;
 
                           return GridView.builder(
-                            itemCount: _filteredDecks.length,
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: crossAxisCount,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: 1.35,
-                            ),
-                            itemBuilder: (context, index) {
-                              final deck = _filteredDecks[index];
-                              return _DeckCardTile(
-                                deck: deck,
-                                onTap: () => _openDeck(deck),
-                              );
-                            },
-                          );
+  itemCount: _filteredDecks.length,
+  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+    crossAxisCount: crossAxisCount,
+    crossAxisSpacing: 12,
+    mainAxisSpacing: 12,
+    childAspectRatio: 1.35,
+  ),
+    itemBuilder: (context, index) {
+      final deck = _filteredDecks[index];
+      return _DeckCardTile(
+        deck: deck,
+        onTap: () => _openDeck(deck),
+        onEdit: () => _editDeck(deck),
+      );
+    },
+          );
                         },
                       ),
               ),
@@ -233,16 +251,19 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
 class _DeckCardTile extends StatelessWidget {
   final FlashcardDeck deck;
   final VoidCallback onTap;
+  final VoidCallback onEdit;
 
   const _DeckCardTile({
     required this.deck,
     required this.onTap,
+    required this.onEdit,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final totalCards = deck.cards.length;
+    final dueCount = deck.cards.where((c) => c.isDue).length;
 
     final int gotItCount =
         deck.cardRatings.values.where((v) => v == true).length;
@@ -250,129 +271,185 @@ class _DeckCardTile extends StatelessWidget {
         deck.cardRatings.values.where((v) => v == false).length;
     final int unratedCount = totalCards - (gotItCount + missedCount);
 
-    return Material(
-      color: isDark ? const Color(0xFF1E222A) : Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
+    return Stack(
+      // Default Stack clipping would cut the badge off where it pokes
+      // past the card's corner — this lets it sit half on, half off.
+      clipBehavior: Clip.none,
+      children: [
+        Material(
+          color: isDark ? const Color(0xFF1E222A) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: onTap,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: deck.color.withOpacity(0.8),
-              width: 2,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    deck.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$totalCards Cards',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Theme.of(context)
-                          .textTheme
-                          .bodySmall
-                          ?.color
-                          ?.withOpacity(0.65),
-                    ),
-                  ),
-                  if (deck.tags.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: deck.tags
-                            .map(
-                              (t) => Container(
-                                margin: const EdgeInsets.only(right: 4),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: deck.color.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  '#$t',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: deck.color,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    ),
-                  ],
-                ],
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: deck.color.withOpacity(0.8),
+                  width: 2,
+                ),
               ),
-              Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: SizedBox(
-                      height: 6,
-                      child: Row(
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Expanded(
-                            flex: gotItCount == 0 ? 1 : gotItCount,
-                            child: Container(
-                              color: Colors.green.shade500.withOpacity(gotItCount > 0 ? 1.0 : 0.2),
+                            child: Text(
+                              deck.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: -0.2,
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 2),
-                          Expanded(
-                            flex: missedCount == 0 ? 1 : missedCount,
-                            child: Container(
-                              color: Colors.red.shade400.withOpacity(missedCount > 0 ? 1.0 : 0.2),
-                            ),
-                          ),
-                          const SizedBox(width: 2),
-                          Expanded(
-                            flex: unratedCount == 0 ? 1 : unratedCount,
-                            child: Container(
-                              color: deck.color.withOpacity(unratedCount > 0 ? 1.0 : 0.2),
-                            ),
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 18),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: onEdit,
                           ),
                         ],
                       ),
-                    ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$totalCards Cards',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.color
+                              ?.withOpacity(0.65),
+                        ),
+                      ),
+                      if (deck.tags.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: deck.tags
+                                .map(
+                                  (t) => Container(
+                                    margin: const EdgeInsets.only(right: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: deck.color.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      '#$t',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: deck.color,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _statusLabel('Got it', gotItCount, Colors.green.shade500),
-                      _statusLabel('Missed', missedCount, Colors.red.shade400),
-                      _statusLabel('New', unratedCount, deck.color),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: SizedBox(
+                          height: 6,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: gotItCount == 0 ? 1 : gotItCount,
+                                child: Container(
+                                  color: Colors.green.shade500
+                                      .withOpacity(gotItCount > 0 ? 1.0 : 0.2),
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              Expanded(
+                                flex: missedCount == 0 ? 1 : missedCount,
+                                child: Container(
+                                  color: Colors.red.shade400.withOpacity(
+                                      missedCount > 0 ? 1.0 : 0.2),
+                                ),
+                              ),
+                              const SizedBox(width: 2),
+                              Expanded(
+                                flex: unratedCount == 0 ? 1 : unratedCount,
+                                child: Container(
+                                  color: deck.color.withOpacity(
+                                      unratedCount > 0 ? 1.0 : 0.2),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _statusLabel(
+                              'Got it', gotItCount, Colors.green.shade500),
+                          _statusLabel(
+                              'Missed', missedCount, Colors.red.shade400),
+                          _statusLabel('New', unratedCount, deck.color),
+                        ],
+                      ),
                     ],
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
-      ),
+
+        // Due-today badge — only shown when there's actually something
+        // to review, so decks with nothing due stay uncluttered.
+        if (dueCount > 0)
+          Positioned(
+            top: -6,
+            right: -6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.red.shade500,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.18),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Text(
+                '$dueCount due',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 

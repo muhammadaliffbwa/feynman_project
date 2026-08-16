@@ -25,11 +25,28 @@ class FlashcardDeckPage extends StatefulWidget {
 }
 
 class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
+  // Visual style for each rating button — color and label only; the
+  // interval preview text is computed per-card, not stored here.
+  static const Map<ReviewRating, ({Color color, String label})>
+      _ratingStyles = {
+    ReviewRating.again: (color: Color(0xFFEF5350), label: 'Again'),
+    ReviewRating.hard: (color: Color(0xFFFFA726), label: 'Hard'),
+    ReviewRating.good: (color: Color(0xFF66BB6A), label: 'Good'),
+    ReviewRating.easy: (color: Color(0xFF42A5F5), label: 'Easy'),
+  };
+
   late PageController _pageController;
   late Color _color;
   late String _title;
   late Set<int> _reviewedIndexes;
   late Map<int, bool> _cardRatings;
+
+  // Indexes into widget.deck.cards that make up *this session's* queue —
+  // due cards only, unless _reviewAllMode is on. Keeping the original
+  // deck-wide index (rather than a 0-based session index) is what keeps
+  // _cardRatings compatible with the stats shown on the deck list page.
+  late List<int> _queueIndexes;
+  bool _reviewAllMode = false;
 
   int _index = 0;
   bool _showSummary = false;
@@ -45,13 +62,18 @@ class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
     _reviewedIndexes = Set<int>.from(widget.deck.reviewedCardIndexes);
     _cardRatings = Map<int, bool>.from(widget.deck.cardRatings);
 
+    _queueIndexes = [
+      for (int i = 0; i < widget.deck.cards.length; i++)
+        if (widget.deck.cards[i].isDue) i,
+    ];
+
     _sessionStopwatch = Stopwatch()..start();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _showSummary) setState(() {});
     });
 
-    if (widget.deck.cards.isNotEmpty) {
-      _reviewedIndexes.add(0);
+    if (_queueIndexes.isNotEmpty) {
+      _reviewedIndexes.add(_queueIndexes[0]);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _notifyUpdate();
       });
@@ -75,19 +97,49 @@ class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
       createdAt: widget.deck.createdAt,
       reviewedCardIndexes: _reviewedIndexes,
       cardRatings: _cardRatings,
-      tags: widget.deck.tags, // Preserves tags on review updates
+      tags: widget.deck.tags,
     );
     widget.onDeckUpdated(updatedDeck);
   }
 
-  void _rateCard(bool gotIt) {
+  // Rebuilds the session queue — due-only by default, or every card when
+  // includeAll is true (used by "Review all cards anyway" and restart).
+  void _rebuildQueue({required bool includeAll}) {
     setState(() {
-      _cardRatings[_index] = gotIt;
-      _reviewedIndexes.add(_index);
+      _reviewAllMode = includeAll;
+      _queueIndexes = [
+        for (int i = 0; i < widget.deck.cards.length; i++)
+          if (includeAll || widget.deck.cards[i].isDue) i,
+      ];
+      _index = 0;
+      _showSummary = false;
+    });
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(0);
+    }
+  }
+
+  void _rateCard(ReviewRating rating) {
+    final cardIndex = _queueIndexes[_index];
+    final card = widget.deck.cards[cardIndex];
+
+    setState(() {
+      // Mutates the card in place — repetitions/intervalMinutes/
+      // easeFactor/nextDueDate all live directly on the Flashcard
+      // object, and widget.deck.cards holds the same references, so
+      // this is enough to update the underlying deck without rebuilding
+      // the list.
+      card.processReview(rating);
+
+      // Again = missed, everything else = got it. This is what keeps the
+      // deck tile's Got it / Missed counters (elsewhere in the app)
+      // working without changes, since they only know true/false.
+      _cardRatings[cardIndex] = rating != ReviewRating.again;
+      _reviewedIndexes.add(cardIndex);
     });
     _notifyUpdate();
 
-    if (_index < widget.deck.cards.length - 1) {
+    if (_index < _queueIndexes.length - 1) {
       _next();
     } else {
       setState(() => _showSummary = true);
@@ -95,25 +147,25 @@ class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
   }
 
   void _onCardSwiped(int index) {
-    if (index >= widget.deck.cards.length) {
+    if (index >= _queueIndexes.length) {
       setState(() => _showSummary = true);
       return;
     }
     setState(() {
       _showSummary = false;
       _index = index;
-      _reviewedIndexes.add(index);
+      _reviewedIndexes.add(_queueIndexes[index]);
     });
     _notifyUpdate();
   }
 
   void _next() {
-    if (_index < widget.deck.cards.length - 1) {
+    if (_index < _queueIndexes.length - 1) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeOut,
       );
-    } else if (_index == widget.deck.cards.length - 1) {
+    } else if (_index == _queueIndexes.length - 1) {
       setState(() => _showSummary = true);
     }
   }
@@ -132,13 +184,9 @@ class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
   }
 
   void _restartDeck() {
-    setState(() {
-      _index = 0;
-      _showSummary = false;
-      _sessionStopwatch.reset();
-      _sessionStopwatch.start();
-    });
-    _pageController.jumpToPage(0);
+    _sessionStopwatch.reset();
+    _sessionStopwatch.start();
+    _rebuildQueue(includeAll: _reviewAllMode);
   }
 
   Future<void> _confirmDelete() async {
@@ -169,11 +217,24 @@ class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
     }
   }
 
+  // Formats a minute count the way Anki's own buttons do — minutes for
+  // short intervals, then hours, days, months, years as it grows.
+  String _formatIntervalPreview(int minutes) {
+    if (minutes < 60) return '${minutes}m';
+    if (minutes < 1440) return '${(minutes / 60).round()}h';
+    final days = minutes / 1440;
+    if (days < 30) return '${days.round()}d';
+    if (days < 365) return '${(days / 30).round()}mo';
+    return '${(days / 365).round()}y';
+  }
+
   @override
   Widget build(BuildContext context) {
     final cards = widget.deck.cards;
     final int gotItCount = _cardRatings.values.where((v) => v == true).length;
-    final int missedCount = _cardRatings.values.where((v) => v == false).length;
+    final int missedCount =
+        _cardRatings.values.where((v) => v == false).length;
+    final bool hasQueue = _queueIndexes.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -190,150 +251,81 @@ class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           child: Column(
             children: [
-              // Progress Bar Header
-              Row(
-                children: [
-                  Text(
-                    _showSummary
-                        ? '${cards.length} / ${cards.length}'
-                        : '${_index + 1} / ${cards.length}',
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: LinearProgressIndicator(
-                        value: _showSummary ? 1.0 : (_index + 1) / cards.length,
-                        minHeight: 8,
-                        backgroundColor: Theme.of(context)
-                            .colorScheme
-                            .surfaceContainerHighest,
-                        valueColor: AlwaysStoppedAnimation(_color),
+              // Progress Bar Header — hidden while there's nothing queued
+              // and no summary to show, since "0 / 0" isn't meaningful.
+              if (hasQueue || _showSummary) ...[
+                Row(
+                  children: [
+                    Text(
+                      _showSummary
+                          ? '${_queueIndexes.length} / ${_queueIndexes.length}'
+                          : '${_index + 1} / ${_queueIndexes.length}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LinearProgressIndicator(
+                          value: _showSummary
+                              ? 1.0
+                              : (_index + 1) / _queueIndexes.length,
+                          minHeight: 8,
+                          backgroundColor: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                          valueColor: AlwaysStoppedAnimation(_color),
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
 
-              // Main Viewer (Card PageView or Summary Dashboard)
+              // Main Viewer
               Expanded(
                 child: _showSummary
                     ? _buildSummaryView(cards.length, gotItCount, missedCount)
-                    : PageView.builder(
-                        controller: _pageController,
-                        itemCount: cards.length,
-                        onPageChanged: _onCardSwiped,
-                        itemBuilder: (context, i) {
-                          final card = cards[i];
-                          return Center(
-                            child: FlipCard(
-                              key: ValueKey(i),
-                              front: card.question,
-                              back: card.answer,
-                              color: _color,
-                            ),
-                          );
-                        },
-                      ),
+                    : !hasQueue
+                        ? _buildAllCaughtUpView()
+                        : PageView.builder(
+                            controller: _pageController,
+                            itemCount: _queueIndexes.length,
+                            onPageChanged: _onCardSwiped,
+                            itemBuilder: (context, i) {
+                              final card = cards[_queueIndexes[i]];
+                              return Center(
+                                child: FlipCard(
+                                  key: ValueKey(_queueIndexes[i]),
+                                  front: card.question,
+                                  back: card.answer,
+                                  color: _color,
+                                ),
+                              );
+                            },
+                          ),
               ),
 
-              if (!_showSummary) ...[
+              if (!_showSummary && hasQueue) ...[
                 const SizedBox(height: 12),
-
-                // NotebookLM Action Control Row (Cross, Checkmark & Nav Arrows)
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Back Arrow
                     IconButton.filledTonal(
                       onPressed: _index > 0 ? _previous : null,
                       icon: const Icon(Icons.arrow_back),
                       iconSize: 20,
                     ),
-                    const SizedBox(width: 16),
-
-                    // Missed Button (Cross)
-                    InkWell(
-                      onTap: () => _rateCard(false),
-                      borderRadius: BorderRadius.circular(30),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 18, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: _cardRatings[_index] == false
-                              ? Colors.red.shade900.withOpacity(0.4)
-                              : Theme.of(context).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(
-                            color: Colors.red.shade400.withOpacity(0.5),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.close,
-                                color: Colors.red.shade400, size: 20),
-                            const SizedBox(width: 6),
-                            Text(
-                              '$missedCount',
-                              style: TextStyle(
-                                color: Colors.red.shade400,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-
-                    // Got It Button (Checkmark)
-                    InkWell(
-                      onTap: () => _rateCard(true),
-                      borderRadius: BorderRadius.circular(30),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 18, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: _cardRatings[_index] == true
-                              ? Colors.green.shade900.withOpacity(0.4)
-                              : Theme.of(context).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(
-                            color: Colors.green.shade400.withOpacity(0.5),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Text(
-                              '$gotItCount',
-                              style: TextStyle(
-                                color: Colors.green.shade400,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Icon(Icons.check,
-                                color: Colors.green.shade400, size: 20),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-
-                    // Forward Arrow
-                    IconButton.filledTonal(
-                      onPressed: _next,
-                      icon: const Icon(Icons.arrow_forward),
-                      iconSize: 20,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child:
+                          _buildRatingButtons(cards[_queueIndexes[_index]]),
                     ),
                   ],
                 ),
                 const SizedBox(height: 12),
               ],
 
-              // Color Swatch Picker
               ColorSwatchPicker(
                 selectedColor: _color,
                 onColorSelected: (color) {
@@ -356,6 +348,117 @@ class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
             },
           ),
           const MiniAudioPlayer(),
+        ],
+      ),
+    );
+  }
+
+  // The four Again/Hard/Good/Easy buttons, each showing what interval
+  // picking it would produce — same idea as Anki's own button captions.
+  Widget _buildRatingButtons(Flashcard card) {
+    return Row(
+      children: ReviewRating.values.map((rating) {
+        final style = _ratingStyles[rating]!;
+        final minutes = card.previewIntervalMinutes(rating);
+        return Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: InkWell(
+              onTap: () => _rateCard(rating),
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: style.color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
+                  border:
+                      Border.all(color: style.color.withValues(alpha: 0.5)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      style.label,
+                      style: TextStyle(
+                        color: style.color,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _formatIntervalPreview(minutes),
+                      style: TextStyle(
+                        color: style.color.withValues(alpha: 0.8),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // Shown when every card is already scheduled for a future date.
+  Widget _buildAllCaughtUpView() {
+    final nextDue = widget.deck.cards.isEmpty
+        ? DateTime.now()
+        : widget.deck.cards
+            .map((c) => c.nextDueDate)
+            .reduce((a, b) => a.isBefore(b) ? a : b);
+    final untilNext = nextDue.difference(DateTime.now());
+
+    String nextLabel;
+    if (untilNext.inMinutes <= 0) {
+      nextLabel = 'Next review is ready soon';
+    } else if (untilNext.inHours < 1) {
+      nextLabel = 'Next review in ${untilNext.inMinutes} min';
+    } else if (untilNext.inDays < 1) {
+      nextLabel = 'Next review in ${untilNext.inHours}h';
+    } else {
+      final d = untilNext.inDays;
+      nextLabel = 'Next review in $d day${d == 1 ? '' : 's'}';
+    }
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle_outline, size: 64, color: _color),
+          const SizedBox(height: 16),
+          const Text(
+            'All caught up!',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            nextLabel,
+            style: TextStyle(
+              color: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.color
+                  ?.withValues(alpha: 0.6),
+            ),
+          ),
+          const SizedBox(height: 24),
+          if (widget.deck.cards.isNotEmpty)
+            OutlinedButton.icon(
+              onPressed: () => _rebuildQueue(includeAll: true),
+              icon: const Icon(Icons.replay),
+              label: const Text('Review all cards anyway'),
+              style: OutlinedButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -389,7 +492,6 @@ class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              // Circular Percentage Indicator
               SizedBox(
                 width: 110,
                 height: 110,
@@ -402,7 +504,7 @@ class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
                       child: CircularProgressIndicator(
                         value: pct,
                         strokeWidth: 8,
-                        backgroundColor: Colors.grey.withOpacity(0.2),
+                        backgroundColor: Colors.grey.withValues(alpha: 0.2),
                         valueColor: AlwaysStoppedAnimation(
                           percentage >= 50 ? Colors.green : Colors.amber,
                         ),
@@ -431,8 +533,6 @@ class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
                   ],
                 ),
               ),
-
-              // Summary Stats List
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -450,7 +550,8 @@ class _FlashcardDeckPageState extends State<FlashcardDeckPage> {
         OutlinedButton.icon(
           onPressed: _restartDeck,
           icon: const Icon(Icons.refresh),
-          label: const Text('Restart deck'),
+          label: Text(
+              _reviewAllMode ? 'Review again' : 'Check for more due cards'),
           style: OutlinedButton.styleFrom(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             shape: RoundedRectangleBorder(

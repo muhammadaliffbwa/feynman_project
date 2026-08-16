@@ -125,7 +125,7 @@ void _saveDeck() {
     title: title,
     cards: _cards,
     color: _selectedColor,
-    tags: List<String>.from(_tags), // Ensure deep copy of tags list
+    tags: List<String>.from(_tags),
     createdAt: widget.initialDeck?.createdAt,
     reviewedCardIndexes: widget.initialDeck?.reviewedCardIndexes,
     cardRatings: widget.initialDeck?.cardRatings,
