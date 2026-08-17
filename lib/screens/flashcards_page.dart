@@ -123,6 +123,253 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
   }).toList();
 }
 
+  void _showFlashcardTechniquesGuide() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.75,
+          maxChildSize: 0.9,
+          minChildSize: 0.5,
+          builder: (context, scrollController) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Row(
+                    children: [
+                      Text('📚', style: TextStyle(fontSize: 26)),
+                      SizedBox(width: 8),
+                      Text(
+                        'Flashcard Mastery Tips',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Mastering flashcards with these powerful techniques!',
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Active Recall Card
+                  _buildTechniqueCard(
+                    emoji: '🎯',
+                    title: '1. Active Recall',
+                    subtitle: 'Retrieval Over Recognition',
+                    accentColor: Colors.purple.shade100,
+                    borderColor: Colors.purple.shade400,
+                    description:
+                        'Active recall is the practice of forcing your brain to retrieve information from memory rather than passively re-reading it. 🧠',
+                    steps: const [
+                      'Read the Front: Look at the question and cover the back. 👁️',
+                      'Commit to an Answer: Say it out loud or write it down before flipping the card. 🗣️',
+                      "No Half-Credit: If you didn't state it clearly before checking, mark it wrong—no guessing! 🔍",
+                      'Why It Works: Mental effort creates stronger neural connections, eliminating the "illusion" that you know something just because it looks familiar. 🏋️‍♂️',
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Spaced Repetition Card
+                  _buildTechniqueCard(
+                    emoji: '🗓️',
+                    title: '2. Spaced Repetition',
+                    subtitle: 'Beat the Forgetting Curve',
+                    accentColor: Colors.teal.shade100,
+                    borderColor: Colors.teal.shade400,
+                    description:
+                        'Spaced repetition is a review schedule that spaces out reviews over increasing time intervals to fight the forgetting curve. ⏳',
+                    steps: const [
+                      'The Leitner System (5 Boxes):\n   • Box 1: Review daily 📅\n   • Box 2: Review every 3 days 🗓️\n   • Box 3: Review weekly 📊\n   • Box 4: Review every 2 weeks ⌛\n   • Box 5: Review monthly 🏆',
+                      'The One Rule: Answer correctly? Move the card up one box. Get it wrong? Send it back to Box 1! 🔁',
+                      'Why It Works: You spend time only on cards you struggle with, reviewing them right before you forget them to lock facts into long-term memory. 🎯',
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+                  Center(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.rocket_launch, size: 18),
+                      label: const Text("Got it! Let's Review"),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTechniqueCard({
+    required String emoji,
+    required String title,
+    required String subtitle,
+    required Color accentColor,
+    required Color borderColor,
+    required String description,
+    required List<String> steps,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: accentColor.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 22)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            description,
+            style: const TextStyle(fontSize: 13, height: 1.3),
+          ),
+          const Divider(height: 20),
+          ...steps.map(
+            (step) => Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Text(
+                step,
+                style: const TextStyle(fontSize: 12.5, height: 1.35),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStudyBanner() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Colors.amber.shade100,
+              Colors.orange.shade50,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.amber.shade300, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.amber.shade200.withOpacity(0.4),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: _showFlashcardTechniquesGuide,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8.0),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade300,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Text('💡', style: TextStyle(fontSize: 20)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Study Smarter!',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        Text(
+                          'Learn Active Recall & Spaced Repetition',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 16,
+                    color: Colors.amber.shade900,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -136,6 +383,7 @@ class _FlashcardsPageState extends State<FlashcardsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildStudyBanner(),
               TextField(
                 onChanged: (val) => setState(() => _searchQuery = val),
                 decoration: InputDecoration(

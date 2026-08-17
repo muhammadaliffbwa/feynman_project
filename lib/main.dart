@@ -74,7 +74,7 @@ class _MyAppState extends State<MyApp> {
 
     return MaterialApp(
       navigatorKey: navigatorKey, // <--- Assigned global navigatorKey here
-      title: 'Feynman',
+      title: 'Feynmora',
       themeMode: _themeMode,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
