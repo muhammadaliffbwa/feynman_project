@@ -41,13 +41,22 @@ class DrawToolbar extends StatelessWidget {
     }
   }
 
-  @override
+@override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        border: Border(top: BorderSide(color: Colors.grey.shade300)),
+        color: isDark
+            ? colorScheme.surfaceContainerHighest
+            : Colors.grey.shade100,
+        border: Border(
+          top: BorderSide(
+            color: isDark ? colorScheme.outlineVariant : Colors.grey.shade300,
+          ),
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -96,7 +105,10 @@ class DrawToolbar extends StatelessWidget {
                             ? Colors.grey.shade400
                             : color,
                         border: (strokeWidth == base * _multiplierFor(tool))
-                            ? Border.all(color: Colors.black87, width: 2)
+                            ? Border.all(
+                                color: colorScheme.onSurface,
+                                width: 2,
+                              )
                             : null,
                       ),
                     ),

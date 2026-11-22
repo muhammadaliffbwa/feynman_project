@@ -441,6 +441,260 @@ class _TodoPageState extends State<TodoPage> {
     );
   }
 
+  // --- Planning Techniques Guide (banner opens this bottom sheet) ---
+  void _showPlanningTechniquesGuide() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.75,
+          maxChildSize: 0.9,
+          minChildSize: 0.5,
+          builder: (context, scrollController) {
+            return Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Row(
+                    children: [
+                      Text('✅', style: TextStyle(fontSize: 26)),
+                      SizedBox(width: 8),
+                      Text(
+                        'Efficient Task-Planning Tips',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Coordinate your daily activities with these techniques!',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Brain Dump Card
+                  _buildTechniqueCard(
+                    emoji: '🧠',
+                    title: '1. The Brain Dump',
+                    subtitle: 'Unfiltered Capture',
+                    accentColor: Colors.deepPurple.shade100,
+                    borderColor: Colors.deepPurple.shade400,
+                    description:
+                        'Clearing tasks out of your head frees up mental bandwidth and gives you an honest look at your actual workload. 🌤️',
+                    steps: const [
+                      '📥 Step 1: Empty Your Head – Write down every pending task, errand, and obligation in one place without worrying about order or feasibility.',
+                      '✏️ Step 2: Clarify Vague Items – Rewrite broad projects into concrete actions starting with a verb (e.g., change "Study physics" to "Complete 10 kinematics practice problems").',
+                      '⏱️ Step 3: Estimate Effort – Note a rough duration next to each item so you can realistically match your tasks to your available hours.',
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Prioritization Card
+                  _buildTechniqueCard(
+                    emoji: '🎯',
+                    title: '2. Ruthless Prioritization',
+                    subtitle: 'Focused Execution',
+                    accentColor: Colors.deepOrange.shade100,
+                    borderColor: Colors.deepOrange.shade400,
+                    description:
+                        'While a brain dump captures everything you could do, prioritization forces you to decide what actually matters today. 🔥',
+                    steps: const [
+                      '🥇 Step 1: Pick Your Top Three – Select a maximum of three "Must-Do" tasks that will create the most meaningful progress if completed today.',
+                      '⚡ Step 2: Apply the Two-Minute Rule – Knock out any tiny tasks taking less than two minutes immediately, and defer or drop low-value busywork.',
+                      '📅 Step 3: Time-Block Your List – Assign your top tasks to specific blocks on your schedule so they have protected time to get done.',
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+                  Center(
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.rocket_launch, size: 18),
+                      label: const Text("Got it! Let's Plan"),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTechniqueCard({
+    required String emoji,
+    required String title,
+    required String subtitle,
+    required Color accentColor,
+    required Color borderColor,
+    required String description,
+    required List<String> steps,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: accentColor.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 22)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            description,
+            style: const TextStyle(fontSize: 13, height: 1.3),
+          ),
+          const Divider(height: 20),
+          ...steps.map(
+            (step) => Padding(
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: Text(
+                step,
+                style: const TextStyle(fontSize: 12.5, height: 1.35),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStudyBanner() {
+    // Left/right/top 16 lines the banner up with the progress card
+    // below it, which has its own 16px margin.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 0.0),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Colors.amber.shade100,
+              Colors.orange.shade50,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.amber.shade300, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.amber.shade200.withValues(alpha: 0.4),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: _showPlanningTechniquesGuide,
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8.0),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade300,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Text('💡', style: TextStyle(fontSize: 20)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Plan Smarter!',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        Text(
+                          'Learn Brain Dump & Prioritization techniques',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 16,
+                    color: Colors.amber.shade900,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final textColor = Theme.of(context).colorScheme.onSurface;
@@ -477,6 +731,9 @@ class _TodoPageState extends State<TodoPage> {
           constraints: const BoxConstraints(maxWidth: 800),
           child: Column(
             children: [
+              // --- 0. Planning Tips Banner ---
+              _buildStudyBanner(),
+
               // --- 1. Progress Summary Card ---
               _buildProgressCard(),
 

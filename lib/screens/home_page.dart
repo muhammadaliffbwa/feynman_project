@@ -154,10 +154,16 @@ class HomePage extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: isDarkMode
+                                ? Theme.of(context)
+                                    .colorScheme
+                                    .surfaceContainerHighest
+                                : Colors.white,
                             borderRadius: BorderRadius.circular(30),
                             border: Border.all(
-                              color: Colors.black.withValues(alpha: 0.08),
+                              color: isDarkMode
+                                  ? Colors.white.withValues(alpha: 0.12)
+                                  : Colors.black.withValues(alpha: 0.08),
                               width: 1,
                             ),
                             boxShadow: [

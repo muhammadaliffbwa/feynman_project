@@ -281,7 +281,7 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
-  Widget _buildTechniqueCard({
+Widget _buildTechniqueCard({
     required String emoji,
     required String title,
     required String subtitle,
@@ -293,7 +293,7 @@ class _NotesPageState extends State<NotesPage> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: accentColor.withOpacity(0.3),
+        color: accentColor.withValues(alpha: 0.25),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: borderColor, width: 1.5),
       ),
@@ -320,7 +320,7 @@ class _NotesPageState extends State<NotesPage> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade700,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -515,7 +515,9 @@ class _NotesPageState extends State<NotesPage> {
     );
   }
 
-  Widget _buildNotesGrid() {
+Widget _buildNotesGrid() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Padding(
       padding: const EdgeInsets.all(12.0),
       child: GridView.builder(
@@ -530,14 +532,40 @@ class _NotesPageState extends State<NotesPage> {
           final note = _notes[index];
           final hasDrawing = note.strokes.isNotEmpty;
           final hasText = note.textDelta.isNotEmpty;
-          final cardColor = note.colorValue != null ? Color(note.colorValue!) : Colors.white;
+
+          // Use dark surface for default uncolored cards in dark mode,
+          // while preserving chosen pastel colors with dark foreground ink.
+          final bool isDefaultWhite =
+              note.colorValue == null || note.colorValue == Colors.white.toARGB32();
+          final Color cardColor = isDefaultWhite
+              ? (isDark
+                  ? Theme.of(context).colorScheme.surfaceContainerHighest
+                  : Colors.white)
+              : Color(note.colorValue!);
+
+          final bool isLightCard = cardColor.computeLuminance() > 0.5;
+          final Color titleColor =
+              isLightCard ? Colors.black87 : Theme.of(context).colorScheme.onSurface;
+          final Color subTextColor = isLightCard
+              ? Colors.black54
+              : Theme.of(context).colorScheme.onSurfaceVariant;
+          final Color innerBoxColor = isLightCard
+              ? Colors.white.withValues(alpha: 0.65)
+              : Colors.black.withValues(alpha: 0.2);
+          final Color chipBgColor = isLightCard
+              ? Colors.white.withValues(alpha: 0.85)
+              : Theme.of(context).colorScheme.surfaceContainerHigh;
 
           return Card(
             color: cardColor,
             elevation: 2,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: BorderSide(color: Colors.grey.shade300),
+              side: BorderSide(
+                color: isLightCard
+                    ? Colors.grey.shade300
+                    : Theme.of(context).colorScheme.outlineVariant,
+              ),
             ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
@@ -555,14 +583,15 @@ class _NotesPageState extends State<NotesPage> {
                             note.title.isEmpty ? 'Untitled' : note.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
+                              color: titleColor,
                             ),
                           ),
                         ),
                         PopupMenuButton<String>(
-                          icon: const Icon(Icons.more_vert, size: 20),
+                          icon: Icon(Icons.more_vert, size: 20, color: titleColor),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                           onSelected: (value) async {
@@ -605,7 +634,7 @@ class _NotesPageState extends State<NotesPage> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.6),
+                          color: innerBoxColor,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -614,7 +643,7 @@ class _NotesPageState extends State<NotesPage> {
                               : (hasDrawing ? 'Drawing attached' : 'Empty note'),
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey.shade700,
+                            color: subTextColor,
                             fontStyle: FontStyle.italic,
                           ),
                         ),
@@ -626,26 +655,32 @@ class _NotesPageState extends State<NotesPage> {
                       children: [
                         if (hasText)
                           Chip(
-                            avatar: const Icon(Icons.text_fields, size: 12),
-                            label: const Text('Text', style: TextStyle(fontSize: 10)),
+                            avatar: Icon(Icons.text_fields, size: 12, color: titleColor),
+                            label: Text(
+                              'Text',
+                              style: TextStyle(fontSize: 10, color: titleColor),
+                            ),
                             visualDensity: VisualDensity.compact,
                             padding: EdgeInsets.zero,
-                            backgroundColor: Colors.white.withOpacity(0.8),
+                            backgroundColor: chipBgColor,
                           ),
                         if (hasDrawing)
                           Chip(
-                            avatar: const Icon(Icons.brush, size: 12),
-                            label: const Text('Sketch', style: TextStyle(fontSize: 10)),
+                            avatar: Icon(Icons.brush, size: 12, color: titleColor),
+                            label: Text(
+                              'Sketch',
+                              style: TextStyle(fontSize: 10, color: titleColor),
+                            ),
                             visualDensity: VisualDensity.compact,
                             padding: EdgeInsets.zero,
-                            backgroundColor: Colors.white.withOpacity(0.8),
+                            backgroundColor: chipBgColor,
                           ),
                       ],
                     ),
                     const SizedBox(height: 4),
                     Text(
                       _formatDate(note.updatedAt),
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      style: TextStyle(fontSize: 11, color: subTextColor),
                     ),
                   ],
                 ),

@@ -65,13 +65,14 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     super.dispose();
   }
 
-  void _save() {
+void _save() {
     final note = Note(
       id: widget.note?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       title: _titleController.text.trim(),
       textDelta: _quillController.document.toDelta().toJson(),
       strokes: _strokes,
       updatedAt: DateTime.now(),
+      colorValue: widget.note?.colorValue,
     );
     Navigator.of(context).pop(note);
   }
@@ -217,9 +218,12 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
     );
   }
 
-  Widget _buildTextMode() {
+Widget _buildTextMode() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
-      color: Colors.grey.shade100, // Light neutral background for outer area
+      color: isDark ? colorScheme.surfaceContainerLow : Colors.grey.shade100,
       child: Column(
         children: [
           Container(
@@ -269,12 +273,17 @@ class _NoteEditorPageState extends State<NoteEditorPage> {
               padding: const EdgeInsets.all(12),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: isDark ? colorScheme.surfaceContainer : Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade300, width: 1),
+                  border: Border.all(
+                    color: isDark
+                        ? colorScheme.outlineVariant
+                        : Colors.grey.shade300,
+                    width: 1,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
