@@ -7,6 +7,9 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <!-- Public ICY radio servers (including SomaFM) reject media requests that
+       carry a Referer from another origin. Omit it so direct stream URLs work. -->
+  <meta name="referrer" content="no-referrer">
   <meta name="description" content="A new Flutter project.">
 
   <!-- iOS meta tags & icons -->

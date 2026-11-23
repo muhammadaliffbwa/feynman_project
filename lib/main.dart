@@ -30,13 +30,13 @@ void main() async {
 
     if (kIsWeb) {
       await FirebaseAppCheck.instance.activate(
-        webProvider: ReCaptchaV3Provider(_recaptchaSiteKey),
+        providerWeb: ReCaptchaV3Provider(_recaptchaSiteKey),
       );
     } else {
       await FirebaseAppCheck.instance.activate(
-        androidProvider: kDebugMode 
-            ? AndroidProvider.debug 
-            : AndroidProvider.playIntegrity,
+        providerAndroid: kDebugMode
+            ? const AndroidDebugProvider()
+            : const AndroidPlayIntegrityProvider(),
       );
     }
   } catch (e) {

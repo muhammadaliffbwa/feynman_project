@@ -31,14 +31,12 @@ class _FlashcardGeneratorPageState extends State<FlashcardGeneratorPage> {
   }
 
   Future<void> _addFiles() async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
+    final picked = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
-      withData: true, // guarantees file bytes are populated on every platform
     );
-    if (result == null) return;
-    setState(() => _files.addAll(result.files));
+    if (picked.isEmpty) return;
+    setState(() => _files.addAll(picked));
   }
 
   void _removeFile(PlatformFile file) => setState(() => _files.remove(file));
@@ -107,7 +105,7 @@ class _FlashcardGeneratorPageState extends State<FlashcardGeneratorPage> {
           '${extra.isEmpty ? '' : '\n\nExtra instructions from the student: $extra'}',
         ),
         for (final file in _files)
-          InlineDataPart(_mimeTypeFor(file.name), file.bytes!),
+          InlineDataPart(_mimeTypeFor(file.name), await file.readAsBytes()),
       ];
 
       final response = await model.generateContent([Content.multi(parts)]);

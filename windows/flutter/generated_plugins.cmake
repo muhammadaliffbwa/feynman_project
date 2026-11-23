@@ -8,6 +8,9 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_app_check
   firebase_auth
   firebase_core
+  flutter_sound
+  flutter_tts
+  permission_handler_windows
   url_launcher_windows
 )
 

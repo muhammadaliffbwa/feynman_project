@@ -13,12 +13,16 @@ class StopwatchController extends ChangeNotifier {
   String currentSubject = '';
   Color barColor = ColorSwatchPicker.options.first;
   bool isRunning = false;
-  bool _isPaused = false;
-  int _distractionCount = 0;
+  bool? _isPaused;
+  int? _distractionCount;
+  List<StudyCheckpoint>? _checkpoints;
 
-  bool get isPaused => _isPaused;
-  bool get hasActiveSession => isRunning || _isPaused;
-  int get distractionCount => _distractionCount;
+  List<StudyCheckpoint> get _checkpointList => _checkpoints ??= [];
+
+  bool get isPaused => _isPaused ?? false;
+  bool get hasActiveSession => isRunning || isPaused;
+  int get distractionCount => _distractionCount ?? 0;
+  List<StudyCheckpoint> get checkpoints => List.unmodifiable(_checkpointList);
 
   void _startUiTimer() {
     _uiTimer?.cancel();
@@ -33,6 +37,7 @@ class StopwatchController extends ChangeNotifier {
     isRunning = true;
     _isPaused = false;
     _distractionCount = 0;
+    _checkpointList.clear();
     stopwatch.reset();
     stopwatch.start();
 
@@ -46,16 +51,60 @@ class StopwatchController extends ChangeNotifier {
     _uiTimer?.cancel();
     isRunning = false;
     _isPaused = true;
-    _distractionCount++;
+    _distractionCount = distractionCount + 1;
     notifyListeners();
   }
 
   void resume() {
-    if (!_isPaused) return;
+    if (!isPaused) return;
     stopwatch.start();
     isRunning = true;
     _isPaused = false;
     _startUiTimer();
+    notifyListeners();
+  }
+
+  void addCheckpoint({String? label, Duration? atElapsed}) {
+    if (!hasActiveSession) return;
+
+    final list = _checkpointList;
+    final recordedElapsed = atElapsed ?? stopwatch.elapsed;
+    final previousElapsed =
+        list.isEmpty ? Duration.zero : list.last.elapsed;
+    final rawSplit = recordedElapsed - previousElapsed;
+    final split = rawSplit.isNegative ? Duration.zero : rawSplit;
+
+    final cleanedLabel = label?.trim() ?? '';
+    final finalLabel = cleanedLabel.isNotEmpty
+        ? cleanedLabel
+        : 'Checkpoint #${list.length + 1}';
+
+    list.add(
+      StudyCheckpoint(
+        label: finalLabel,
+        elapsed: recordedElapsed,
+        splitDuration: split,
+      ),
+    );
+    notifyListeners();
+  }
+
+  void removeCheckpoint(int index) {
+    final list = _checkpointList;
+    if (index < 0 || index >= list.length) return;
+    list.removeAt(index);
+
+    for (int i = 0; i < list.length; i++) {
+      final prevElapsed = i == 0 ? Duration.zero : list[i - 1].elapsed;
+      final item = list[i];
+      final recalculatedSplit = item.elapsed - prevElapsed;
+      list[i] = StudyCheckpoint(
+        label: item.label,
+        elapsed: item.elapsed,
+        splitDuration:
+            recalculatedSplit.isNegative ? Duration.zero : recalculatedSplit,
+      );
+    }
     notifyListeners();
   }
 
@@ -68,11 +117,14 @@ class StopwatchController extends ChangeNotifier {
     _isPaused = false;
 
     final elapsed = stopwatch.elapsed;
-    final distractions = _distractionCount;
+    final distractions = distractionCount;
     final subject = currentSubject;
+    final recordedCheckpoints = List<StudyCheckpoint>.from(_checkpointList);
+    final selectedColorValue = barColor.toARGB32();
 
     stopwatch.reset();
     _distractionCount = 0;
+    _checkpointList.clear();
     currentSubject = '';
 
     if (elapsed.inSeconds == 0) {
@@ -85,6 +137,8 @@ class StopwatchController extends ChangeNotifier {
       duration: elapsed,
       endedAt: DateTime.now(),
       distractions: distractions,
+      colorValue: selectedColorValue,
+      checkpoints: recordedCheckpoints,
     );
 
     notifyListeners();
