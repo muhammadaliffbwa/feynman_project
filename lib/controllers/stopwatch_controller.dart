@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/study_session.dart';
+import '../services/focus_stats_service.dart';
 import '../widgets/color_swatch_picker.dart';
 
 class StopwatchController extends ChangeNotifier {
@@ -27,6 +28,9 @@ class StopwatchController extends ChangeNotifier {
   void _startUiTimer() {
     _uiTimer?.cancel();
     _uiTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      FocusStatsService().updateLiveSessionSeconds(
+        stopwatchSeconds: stopwatch.elapsed.inSeconds,
+      );
       notifyListeners();
     });
   }
@@ -117,6 +121,10 @@ class StopwatchController extends ChangeNotifier {
     _isPaused = false;
 
     final elapsed = stopwatch.elapsed;
+    if (elapsed.inSeconds > 0) {
+      FocusStatsService().logStopwatchDuration(elapsed);
+    }
+
     final distractions = distractionCount;
     final subject = currentSubject;
     final recordedCheckpoints = List<StudyCheckpoint>.from(_checkpointList);

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vibration/vibration.dart';
+import '../services/focus_stats_service.dart';
 import '../services/noise_player.dart';
 
 class PomodoroPreset {
@@ -100,6 +101,13 @@ class PomodoroService extends ChangeNotifier {
   void _tick(Timer timer) {
     if (remainingSeconds > 1) {
       remainingSeconds--;
+      if (isWorkSession) {
+        final elapsedSeconds = (selectedMinutes * 60) - remainingSeconds;
+        if (elapsedSeconds > 0) {
+          FocusStatsService()
+              .updateLiveSessionSeconds(pomodoroSeconds: elapsedSeconds);
+        }
+      }
       notifyListeners();
     } else {
       timer.cancel();
@@ -110,6 +118,15 @@ class PomodoroService extends ChangeNotifier {
   void stopTimer() {
     _timer?.cancel();
     noisePlayer.stop();
+
+    if (isRunning && isWorkSession) {
+      final elapsedSeconds = (selectedMinutes * 60) - remainingSeconds;
+      if (elapsedSeconds > 0) {
+        FocusStatsService()
+            .logPomodoroDuration(Duration(seconds: elapsedSeconds));
+      }
+    }
+
     isRunning = false;
     remainingSeconds = 0;
     notifyListeners();
@@ -118,7 +135,12 @@ class PomodoroService extends ChangeNotifier {
   Future<void> _onTimerComplete() async {
     noisePlayer.stop();
     isRunning = false;
-    
+
+    if (isWorkSession) {
+      await FocusStatsService()
+          .logPomodoroDuration(Duration(minutes: selectedMinutes));
+    }
+
     // Store finished session state for notification display
     final completedSessionName = isWorkSession ? 'Work session' : 'Rest session';
 
