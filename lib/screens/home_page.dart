@@ -1,6 +1,9 @@
 // lib/screens/home_page.dart
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'flashcards_page.dart';
 import 'focus_audio_page.dart';
@@ -8,6 +11,7 @@ import 'notes_page.dart';
 import 'pomodoro_page.dart';
 import 'stopwatch_page.dart';
 import 'todo_page.dart';
+import '../services/focus_stats_service.dart';
 import '../services/music_player_service.dart';
 import '../widgets/mini_audio_player.dart';
 import '../widgets/mini_stopwatch_bar.dart';
@@ -41,12 +45,29 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  static const String _orderStorageKey = 'home_module_card_order';
+  static const List<String> _defaultOrder = [
+    'flashcards',
+    'notes',
+    'todo',
+    'pomodoro',
+    'stopwatch',
+    'focus_audio',
+  ];
+
   final MusicPlayerService _audioService = MusicPlayerService();
+  final FocusStatsService _statsService = FocusStatsService();
+
+  List<String> _cardOrder = List<String>.from(_defaultOrder);
+  String? _draggingId;
+
+  bool get _isCustomOrder => !listEquals(_cardOrder, _defaultOrder);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadCardOrder();
   }
 
   @override
@@ -62,11 +83,76 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _loadCardOrder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getStringList(_orderStorageKey);
+      if (saved == null || saved.isEmpty || !mounted) return;
+
+      final reconciled = saved.where(_defaultOrder.contains).toList();
+      for (final id in _defaultOrder) {
+        if (!reconciled.contains(id)) {
+          reconciled.add(id);
+        }
+      }
+
+      setState(() {
+        _cardOrder = reconciled;
+      });
+    } catch (e) {
+      debugPrint('Error loading home card order: $e');
+    }
+  }
+
+  Future<void> _saveCardOrder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_orderStorageKey, _cardOrder);
+    } catch (e) {
+      debugPrint('Error saving home card order: $e');
+    }
+  }
+
+  void _reorderCards(String draggedId, String targetId) {
+    if (draggedId == targetId) return;
+    final fromIndex = _cardOrder.indexOf(draggedId);
+    final toIndex = _cardOrder.indexOf(targetId);
+    if (fromIndex == -1 || toIndex == -1) return;
+
+    setState(() {
+      final moved = _cardOrder.removeAt(fromIndex);
+      _cardOrder.insert(toIndex, moved);
+    });
+    HapticFeedback.selectionClick();
+    _saveCardOrder();
+  }
+
+  Future<void> _resetCardOrder() async {
+    setState(() {
+      _cardOrder = List<String>.from(_defaultOrder);
+    });
+    HapticFeedback.lightImpact();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_orderStorageKey);
+    } catch (e) {
+      debugPrint('Error resetting home card order: $e');
+    }
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Home layout reset to default order'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
   Future<void> _openModule(WidgetBuilder builder) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(builder: builder),
     );
-    // Re-evaluate module status subtitles when returning to HomePage
     if (mounted) {
       setState(() {});
     }
@@ -91,11 +177,276 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return 'Auditory masking & Lo-Fi';
   }
 
+  String? _defaultPomodoroSubtitle() {
+    if (_statsService.todayPomodoroSeconds <= 0) return null;
+    return '${_statsService.formatFocusMinutes(_statsService.todayPomodoroDuration)} logged today';
+  }
+
+  String? _defaultStopwatchSubtitle() {
+    if (_statsService.todayStopwatchSeconds <= 0) return null;
+    return '${_statsService.formatFocusMinutes(_statsService.todayStopwatchDuration)} logged today';
+  }
+
+  void _showTodayFocusBreakdown() {
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return ListenableBuilder(
+          listenable: _statsService,
+          builder: (context, _) {
+            final colorScheme = Theme.of(context).colorScheme;
+            final totalLabel = _statsService
+                .formatFocusMinutes(_statsService.todayTotalDuration);
+            final pomodoroLabel = _statsService
+                .formatFocusMinutes(_statsService.todayPomodoroDuration);
+            final stopwatchLabel = _statsService
+                .formatFocusMinutes(_statsService.todayStopwatchDuration);
+            final streak = _statsService.currentStreak;
+
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: colorScheme.outlineVariant,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Today's Focus Summary",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.orange.withValues(alpha: 0.4),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.local_fire_department_rounded,
+                              size: 16,
+                              color: Colors.orange.shade600,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              streak == 1
+                                  ? '1 day streak'
+                                  : '$streak days streak',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.orange.shade700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _BreakdownRow(
+                    icon: Icons.bolt_rounded,
+                    color: const Color(0xFF6C5CE7),
+                    label: 'Combined Total Today',
+                    value: totalLabel,
+                    isBold: true,
+                  ),
+                  const Divider(height: 20),
+                  _BreakdownRow(
+                    icon: Icons.timer_outlined,
+                    color: const Color(0xFFFB8C00),
+                    label: 'Pomodoro Sessions',
+                    value: pomodoroLabel,
+                  ),
+                  const SizedBox(height: 12),
+                  _BreakdownRow(
+                    icon: Icons.hourglass_bottom,
+                    color: const Color(0xFF8E24AA),
+                    label: 'Study Stopwatch',
+                    value: stopwatchLabel,
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDailyFocusBar(BuildContext context, {required bool isCompact}) {
+    final isDark = widget.isDarkMode;
+    final colorScheme = Theme.of(context).colorScheme;
+    final totalLabel =
+        _statsService.formatFocusMinutes(_statsService.todayTotalDuration);
+    final pomodoroLabel =
+        _statsService.formatFocusMinutes(_statsService.todayPomodoroDuration);
+    final stopwatchLabel =
+        _statsService.formatFocusMinutes(_statsService.todayStopwatchDuration);
+    final streak = _statsService.currentStreak;
+    final hasStreak = streak > 0;
+
+    return Container(
+      height: 52,
+      decoration: BoxDecoration(
+        color: isDark ? colorScheme.surfaceContainerHighest : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.1)
+              : Colors.black.withValues(alpha: 0.07),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: _showTodayFocusBreakdown,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6C5CE7).withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.schedule_rounded,
+                    size: 18,
+                    color: Color(0xFF6C5CE7),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          "Today's Focus: ",
+                          style: TextStyle(
+                            fontSize: isCompact ? 12 : 13,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Text(
+                        totalLabel,
+                        style: TextStyle(
+                          fontSize: isCompact ? 13.5 : 14.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      if (!isCompact) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '($pomodoroLabel Pomodoro · $stopwatchLabel Stopwatch)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Daily Study Streak Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: hasStreak
+                        ? Colors.orange.withValues(alpha: isDark ? 0.22 : 0.12)
+                        : colorScheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: hasStreak
+                          ? Colors.orange.withValues(alpha: 0.4)
+                          : colorScheme.outlineVariant.withValues(alpha: 0.5),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.local_fire_department_rounded,
+                        size: 16,
+                        color: hasStreak
+                            ? Colors.orange.shade600
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${streak}d streak',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: hasStreak
+                              ? (isDark
+                                  ? Colors.orange.shade300
+                                  : Colors.orange.shade800)
+                              : colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final Listenable combinedListenable = widget.statusListenable != null
-        ? Listenable.merge([_audioService, widget.statusListenable!])
-        : _audioService;
+    final Listenable combinedListenable = Listenable.merge([
+      _audioService,
+      _statsService,
+      if (widget.statusListenable != null) widget.statusListenable!,
+    ]);
 
     return ListenableBuilder(
       listenable: combinedListenable,
@@ -105,14 +456,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         final String? notesLive = widget.notesStatusBuilder?.call()?.trim();
         final String? todoLive = widget.todoStatusBuilder?.call()?.trim();
         final String? pomodoroLive =
-            widget.pomodoroStatusBuilder?.call()?.trim();
-        final String? stopwatchLive =
-            widget.stopwatchStatusBuilder?.call()?.trim();
+            (widget.pomodoroStatusBuilder?.call() ?? _defaultPomodoroSubtitle())
+                ?.trim();
+        final String? stopwatchLive = (widget.stopwatchStatusBuilder?.call() ??
+                _defaultStopwatchSubtitle())
+            ?.trim();
 
         final bool isAudioLive = _audioService.currentUrl != null;
 
-        final features = <_Feature>[
-          _Feature(
+        final Map<String, _Feature> featureMap = {
+          'flashcards': _Feature(
+            id: 'flashcards',
             title: 'Flashcards & Diagrams',
             subtitle: (flashcardsLive != null && flashcardsLive.isNotEmpty)
                 ? flashcardsLive
@@ -122,7 +476,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             color: const Color(0xFF0A6C3E),
             builder: (_) => const FlashcardsPage(),
           ),
-          _Feature(
+          'notes': _Feature(
+            id: 'notes',
             title: 'Notes',
             subtitle: (notesLive != null && notesLive.isNotEmpty)
                 ? notesLive
@@ -132,7 +487,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             color: const Color(0xFF1E88E5),
             builder: (_) => const NotesPage(),
           ),
-          _Feature(
+          'todo': _Feature(
+            id: 'todo',
             title: 'To-Do List',
             subtitle: (todoLive != null && todoLive.isNotEmpty)
                 ? todoLive
@@ -142,7 +498,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             color: const Color(0xFFE53935),
             builder: (_) => const TodoPage(),
           ),
-          _Feature(
+          'pomodoro': _Feature(
+            id: 'pomodoro',
             title: 'Pomodoro Timer',
             subtitle: (pomodoroLive != null && pomodoroLive.isNotEmpty)
                 ? pomodoroLive
@@ -152,7 +509,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             color: const Color(0xFFFB8C00),
             builder: (_) => const PomodoroPage(),
           ),
-          _Feature(
+          'stopwatch': _Feature(
+            id: 'stopwatch',
             title: 'Study Stopwatch',
             subtitle: (stopwatchLive != null && stopwatchLive.isNotEmpty)
                 ? stopwatchLive
@@ -162,7 +520,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             color: const Color(0xFF8E24AA),
             builder: (_) => const StopwatchPage(),
           ),
-          _Feature(
+          'focus_audio': _Feature(
+            id: 'focus_audio',
             title: 'Focus Audio',
             subtitle: _buildAudioSubtitle(),
             isLive: isAudioLive,
@@ -170,7 +529,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             color: const Color(0xFF6C5CE7),
             builder: (_) => const FocusAudioPage(),
           ),
-        ];
+        };
+
+        final List<_Feature> features = _cardOrder
+            .map((id) => featureMap[id])
+            .whereType<_Feature>()
+            .toList();
 
         final subtitleColor = Theme.of(context)
             .textTheme
@@ -194,13 +558,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 const double horizontalPadding = 20.0;
                 const double verticalPadding = 16.0;
                 const double spacing = 12.0;
-                const double headerEstimatedHeight = 72.0;
+                const double headerEstimatedHeight = 68.0;
+                const double focusBarHeight = 52.0;
+                const double focusBarSpacing = 12.0;
 
                 // Calculate precise card dimensions to guarantee zero-scroll fit
                 final double gridWidth =
                     availableWidth - (horizontalPadding * 2);
                 final double gridHeight = availableHeight -
                     headerEstimatedHeight -
+                    focusBarHeight -
+                    focusBarSpacing -
                     (verticalPadding * 2);
 
                 final double colWidth =
@@ -209,11 +577,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 final double rowHeight =
                     (gridHeight - ((rowCount - 1) * spacing)) / rowCount;
 
-                // Protect against potential division by zero or negative space
                 final double calculatedAspectRatio =
                     (colWidth > 0 && rowHeight > 0)
                         ? (colWidth / rowHeight)
                         : 1.2;
+
+                final double safeTileWidth = colWidth > 0 ? colWidth : 160.0;
+                final double safeTileHeight = rowHeight > 0 ? rowHeight : 110.0;
 
                 return Padding(
                   padding: const EdgeInsets.symmetric(
@@ -244,10 +614,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                   ),
                                   const SizedBox(height: 2),
                                   Text(
-                                    'What would you like to focus on today?',
+                                    _draggingId != null
+                                        ? 'Drop onto any tile to swap positions'
+                                        : 'What would you like to focus on today?',
                                     style: TextStyle(
                                       fontSize: 14,
-                                      color: subtitleColor,
+                                      color: _draggingId != null
+                                          ? const Color(0xFF6C5CE7)
+                                          : subtitleColor,
+                                      fontWeight: _draggingId != null
+                                          ? FontWeight.w600
+                                          : FontWeight.normal,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -255,7 +632,41 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 ],
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 8),
+                            if (_isCustomOrder) ...[
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: widget.isDarkMode
+                                      ? Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerHighest
+                                      : Colors.white,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: widget.isDarkMode
+                                        ? Colors.white.withValues(alpha: 0.12)
+                                        : Colors.black.withValues(alpha: 0.08),
+                                  ),
+                                ),
+                                child: IconButton(
+                                  onPressed: _resetCardOrder,
+                                  tooltip: 'Reset card order',
+                                  constraints: const BoxConstraints(
+                                    minWidth: 40,
+                                    minHeight: 40,
+                                  ),
+                                  padding: EdgeInsets.zero,
+                                  icon: Icon(
+                                    Icons.restart_alt_rounded,
+                                    size: 20,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                            ],
                             // Theme Toggle in Pill
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -317,7 +728,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                         ),
                       ),
 
-                      // Fixed Grid fitting entire viewport
+                      // Slim Daily Focus Time & Streak Bar
+                      _buildDailyFocusBar(context, isCompact: !isDesktop),
+                      const SizedBox(height: focusBarSpacing),
+
+                      // Fixed Reorderable Grid fitting entire viewport
                       Expanded(
                         child: GridView.builder(
                           physics: const NeverScrollableScrollPhysics(),
@@ -329,11 +744,75 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             crossAxisSpacing: spacing,
                             childAspectRatio: calculatedAspectRatio,
                           ),
-                          itemBuilder: (context, i) => _FeatureCard(
-                            feature: features[i],
-                            isCompact: !isDesktop,
-                            onTap: () => _openModule(features[i].builder),
-                          ),
+                          itemBuilder: (context, i) {
+                            final feature = features[i];
+                            return DragTarget<String>(
+                              onWillAcceptWithDetails: (details) =>
+                                  details.data != feature.id,
+                              onAcceptWithDetails: (details) =>
+                                  _reorderCards(details.data, feature.id),
+                              builder: (context, candidateData, _) {
+                                final isTargeted = candidateData.isNotEmpty;
+                                return LongPressDraggable<String>(
+                                  data: feature.id,
+                                  delay: const Duration(milliseconds: 220),
+                                  onDragStarted: () {
+                                    HapticFeedback.mediumImpact();
+                                    setState(() => _draggingId = feature.id);
+                                  },
+                                  onDragEnd: (_) {
+                                    if (mounted) {
+                                      setState(() => _draggingId = null);
+                                    }
+                                  },
+                                  onDraggableCanceled: (_, __) {
+                                    if (mounted) {
+                                      setState(() => _draggingId = null);
+                                    }
+                                  },
+                                  feedback: Material(
+                                    color: Colors.transparent,
+                                    child: Transform.scale(
+                                      scale: 1.04,
+                                      child: SizedBox(
+                                        width: safeTileWidth,
+                                        height: safeTileHeight,
+                                        child: _FeatureCard(
+                                          feature: feature,
+                                          isCompact: !isDesktop,
+                                          isElevatedFeedback: true,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  childWhenDragging: Container(
+                                    decoration: BoxDecoration(
+                                      color:
+                                          feature.color.withValues(alpha: 0.04),
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(
+                                        color: feature.color
+                                            .withValues(alpha: 0.35),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                  child: AnimatedScale(
+                                    scale: isTargeted ? 0.96 : 1.0,
+                                    duration: const Duration(milliseconds: 140),
+                                    child: _FeatureCard(
+                                      feature: feature,
+                                      isCompact: !isDesktop,
+                                      isDropTarget: isTargeted,
+                                      showDragHint: _draggingId != null &&
+                                          _draggingId != feature.id,
+                                      onTap: () => _openModule(feature.builder),
+                                    ),
+                                  ),
+                                );
+                              },
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -357,7 +836,58 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 }
 
+class _BreakdownRow extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String value;
+  final bool isBold;
+
+  const _BreakdownRow({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.value,
+    this.isBold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.14),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: isBold ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: isBold ? 16 : 14.5,
+            fontWeight: FontWeight.w700,
+            color: isBold ? color : null,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _Feature {
+  final String id;
   final String title;
   final String subtitle;
   final bool isLive;
@@ -366,6 +896,7 @@ class _Feature {
   final WidgetBuilder builder;
 
   const _Feature({
+    required this.id,
     required this.title,
     required this.subtitle,
     this.isLive = false,
@@ -378,104 +909,142 @@ class _Feature {
 class _FeatureCard extends StatelessWidget {
   final _Feature feature;
   final bool isCompact;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool isDropTarget;
+  final bool isElevatedFeedback;
+  final bool showDragHint;
 
   const _FeatureCard({
     required this.feature,
     required this.isCompact,
-    required this.onTap,
+    this.onTap,
+    this.isDropTarget = false,
+    this.isElevatedFeedback = false,
+    this.showDragHint = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardTint = feature.color.withValues(alpha: isDark ? 0.22 : 0.08);
+    final double baseAlpha = isDark ? 0.22 : 0.08;
+    final cardTint = isElevatedFeedback
+        ? Color.alphaBlend(
+            feature.color.withValues(alpha: isDark ? 0.30 : 0.14),
+            Theme.of(context).colorScheme.surface,
+          )
+        : feature.color.withValues(
+            alpha: isDropTarget ? (baseAlpha + 0.08) : baseAlpha,
+          );
     final defaultSubtitleColor = Theme.of(context)
         .textTheme
         .bodySmall
         ?.color
         ?.withValues(alpha: 0.65);
 
-    return Material(
-      color: cardTint,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
+    return Container(
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.all(isCompact ? 12 : 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Top Row: Icon Badge + Live Indicator Dot
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(isCompact ? 8 : 10),
-                    decoration: BoxDecoration(
-                      color: feature.color,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: feature.color.withValues(alpha: 0.25),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      feature.icon,
-                      color: Colors.white,
-                      size: isCompact ? 20 : 24,
-                    ),
-                  ),
-                  if (feature.isLive)
+        border: isDropTarget
+            ? Border.all(color: feature.color, width: 2)
+            : null,
+        boxShadow: isElevatedFeedback
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: isDark ? 0.45 : 0.18),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : null,
+      ),
+      child: Material(
+        color: cardTint,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Padding(
+            padding: EdgeInsets.all(isCompact ? 12 : 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Top Row: Icon Badge + Live / Drag Indicator
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Container(
-                      width: 8,
-                      height: 8,
-                      margin: const EdgeInsets.only(top: 4, right: 2),
+                      padding: EdgeInsets.all(isCompact ? 8 : 10),
                       decoration: BoxDecoration(
                         color: feature.color,
-                        shape: BoxShape.circle,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: feature.color.withValues(alpha: 0.25),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        feature.icon,
+                        color: Colors.white,
+                        size: isCompact ? 20 : 24,
                       ),
                     ),
-                ],
-              ),
+                    if (showDragHint)
+                      Icon(
+                        Icons.drag_indicator_rounded,
+                        size: 18,
+                        color: feature.color.withValues(alpha: 0.7),
+                      )
+                    else if (feature.isLive)
+                      Container(
+                        width: 8,
+                        height: 8,
+                        margin: const EdgeInsets.only(top: 4, right: 2),
+                        decoration: BoxDecoration(
+                          color: feature.color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                  ],
+                ),
 
-              // Title & Subtitle Section
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    feature.title,
-                    style: TextStyle(
-                      fontSize: isCompact ? 14 : 16,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.3,
+                // Title & Subtitle Section
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      feature.title,
+                      style: TextStyle(
+                        fontSize: isCompact ? 14 : 16,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: isCompact ? 2 : 4),
-                  Text(
-                    feature.subtitle,
-                    style: TextStyle(
-                      fontSize: isCompact ? 11 : 12,
-                      fontWeight:
-                          feature.isLive ? FontWeight.w600 : FontWeight.normal,
-                      color: feature.isLive
-                          ? feature.color
-                          : defaultSubtitleColor,
+                    SizedBox(height: isCompact ? 2 : 4),
+                    Text(
+                      feature.subtitle,
+                      style: TextStyle(
+                        fontSize: isCompact ? 11 : 12,
+                        fontWeight: feature.isLive
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                        color: feature.isLive
+                            ? feature.color
+                            : defaultSubtitleColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
